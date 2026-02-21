@@ -19,8 +19,8 @@
     .total-input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #f8fafc; font-size: 20px; font-weight: 700; padding: 10px 14px; outline: none; }
     .warn { color: #f59e0b; font-size: 12px; margin-top: 8px; }
     .section-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 10px; }
+    .saved-badge { font-size: 11px; color: #22c55e; text-align: center; margin-bottom: 8px; display: none; }
 
-    /* Desktop table */
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     thead tr { background: #0f172a; }
@@ -40,7 +40,6 @@
     .muted { color: #94a3b8; text-align: right; }
     .del-btn { background: none; border: none; color: #ef4444; font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
 
-    /* Mobile cards */
     .mobile-rows { display: none; }
     .m-card { background: #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
     .m-card:nth-child(even) { background: #243044; }
@@ -61,6 +60,8 @@
     .add-row input:nth-child(2) { flex: 1; }
     .add-btn { background: #3b82f6; border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
 
+    .reset-btn { background: none; border: 1px solid #ef4444; border-radius: 8px; color: #ef4444; font-size: 12px; padding: 6px 12px; cursor: pointer; display: block; margin: 8px auto 0; }
+
     .legend { display: flex; gap: 12px; justify-content: center; font-size: 11px; color: #64748b; margin-top: 12px; flex-wrap: wrap; }
     .green { color: #22c55e; } .blue { color: #3b82f6; } .red { color: #ef4444; }
 
@@ -73,14 +74,14 @@
 <body>
   <h1>💰 Investment Tracker</h1>
   <p class="subtitle">Plan & track your investment allocations</p>
+  <div class="saved-badge" id="savedBadge">✅ Changes saved</div>
 
   <div class="card">
     <label>Total Amount to Invest (₹)</label>
-    <input class="total-input" type="number" id="totalAmt" placeholder="e.g. 100000" oninput="render()" />
+    <input class="total-input" type="number" id="totalAmt" placeholder="e.g. 100000" oninput="saveAndRender()" />
     <div class="warn" id="pctWarn" style="display:none"></div>
   </div>
 
-  <!-- Desktop Table -->
   <div class="card desktop-table">
     <div class="table-wrap">
       <table>
@@ -101,11 +102,9 @@
     </div>
   </div>
 
-  <!-- Mobile Cards -->
   <div class="mobile-rows" id="mobileRows"></div>
   <div class="m-total-card mobile-rows" id="mobileTotals" style="display:none"></div>
 
-  <!-- Add Category -->
   <div class="card">
     <div class="section-label">+ Add Category</div>
     <div class="add-row">
@@ -113,6 +112,7 @@
       <input type="number" id="newPct" placeholder="%" onkeydown="if(event.key==='Enter')addRow()" />
       <button class="add-btn" onclick="addRow()">Add</button>
     </div>
+    <button class="reset-btn" onclick="resetAll()">🗑 Reset All Data</button>
   </div>
 
   <div class="legend">
@@ -122,17 +122,51 @@
   </div>
 
   <script>
-    var rows = [
+    var DEFAULT_ROWS = [
       { id: 1, name: "Equity", pct: 40, actual: "" },
       { id: 2, name: "Mutual Fund", pct: 25, actual: "" },
       { id: 3, name: "Gold", pct: 15, actual: "" },
       { id: 4, name: "Cash", pct: 20, actual: "" },
     ];
     var nid = 5;
+    var rows = [];
 
-    function fmt(n) {
-      return Math.round(n).toLocaleString("en-IN");
+    // Load from localStorage
+    function loadData() {
+      try {
+        var saved = localStorage.getItem("inv_rows");
+        var savedTotal = localStorage.getItem("inv_total");
+        var savedNid = localStorage.getItem("inv_nid");
+        if (saved) {
+          rows = JSON.parse(saved);
+          nid = savedNid ? parseInt(savedNid) : rows.length + 1;
+        } else {
+          rows = JSON.parse(JSON.stringify(DEFAULT_ROWS));
+        }
+        if (savedTotal) {
+          document.getElementById("totalAmt").value = savedTotal;
+        }
+      } catch(e) {
+        rows = JSON.parse(JSON.stringify(DEFAULT_ROWS));
+      }
     }
+
+    function saveData() {
+      try {
+        localStorage.setItem("inv_rows", JSON.stringify(rows));
+        localStorage.setItem("inv_total", document.getElementById("totalAmt").value);
+        localStorage.setItem("inv_nid", nid);
+        // Show saved badge briefly
+        var badge = document.getElementById("savedBadge");
+        badge.style.display = "block";
+        clearTimeout(window._saveTimer);
+        window._saveTimer = setTimeout(function(){ badge.style.display = "none"; }, 2000);
+      } catch(e) {}
+    }
+
+    function saveAndRender() { saveData(); render(); }
+
+    function fmt(n) { return Math.round(n).toLocaleString("en-IN"); }
 
     function diffColor(d, hasActual) {
       if (!hasActual) return "#475569";
@@ -166,10 +200,10 @@
         // Desktop row
         var tr = document.createElement("tr");
         tr.innerHTML =
-          '<td><input class="cell-input name-input" value="' + esc(r.name) + '" onchange="rows[' + i + '].name=this.value" /></td>' +
-          '<td><input class="cell-input" type="number" value="' + r.pct + '" style="text-align:right" onchange="rows[' + i + '].pct=this.value;render()" /></td>' +
+          '<td><input class="cell-input name-input" value="' + esc(r.name) + '" onchange="rows[' + i + '].name=this.value;saveAndRender()" /></td>' +
+          '<td><input class="cell-input" type="number" value="' + r.pct + '" style="text-align:right" onchange="rows[' + i + '].pct=this.value;saveAndRender()" /></td>' +
           '<td class="muted">' + (total > 0 ? '₹' + fmt(planned) : '—') + '</td>' +
-          '<td><input class="cell-input actual-input" type="number" value="' + (r.actual || '') + '" placeholder="0" style="text-align:right;width:100%" onchange="rows[' + i + '].actual=this.value;render()" /></td>' +
+          '<td><input class="cell-input actual-input" type="number" value="' + (r.actual || '') + '" placeholder="0" style="text-align:right;width:100%" onchange="rows[' + i + '].actual=this.value;saveAndRender()" /></td>' +
           '<td class="muted">' + (hasActual ? Math.round(actPct) + '%' : '—') + '</td>' +
           '<td style="text-align:right;font-weight:600;color:' + dc + '">' + diffStr + '</td>' +
           '<td><button class="del-btn" onclick="deleteRow(' + r.id + ')">×</button></td>';
@@ -180,23 +214,24 @@
         mc.className = "m-card";
         mc.innerHTML =
           '<div class="m-header">' +
-            '<div class="m-name"><input value="' + esc(r.name) + '" onchange="rows[' + i + '].name=this.value" /></div>' +
+            '<div class="m-name"><input value="' + esc(r.name) + '" onchange="rows[' + i + '].name=this.value;saveAndRender()" /></div>' +
             '<button class="del-btn" onclick="deleteRow(' + r.id + ')">×</button>' +
           '</div>' +
           '<div class="m-grid">' +
-            '<div class="m-field"><div class="m-field-label">Target %</div><div class="m-field-value"><input type="number" value="' + r.pct + '" onchange="rows[' + i + '].pct=this.value;render()" style="width:80px" /></div></div>' +
+            '<div class="m-field"><div class="m-field-label">Target %</div><div class="m-field-value"><input type="number" value="' + r.pct + '" onchange="rows[' + i + '].pct=this.value;saveAndRender()" style="width:80px" /></div></div>' +
             '<div class="m-field"><div class="m-field-label">Planned (₹)</div><div class="m-field-value" style="color:#94a3b8">' + (total > 0 ? '₹' + fmt(planned) : '—') + '</div></div>' +
-            '<div class="m-field"><div class="m-field-label">Actual (₹)</div><div class="m-field-value"><input type="number" value="' + (r.actual || '') + '" placeholder="0" onchange="rows[' + i + '].actual=this.value;render()" style="width:100%" /></div></div>' +
+            '<div class="m-field"><div class="m-field-label">Actual (₹)</div><div class="m-field-value"><input type="number" value="' + (r.actual || '') + '" placeholder="0" onchange="rows[' + i + '].actual=this.value;saveAndRender()" style="width:100%" /></div></div>' +
             '<div class="m-field"><div class="m-field-label">Actual %</div><div class="m-field-value" style="color:#94a3b8">' + (hasActual ? Math.round(actPct) + '%' : '—') + '</div></div>' +
             '<div class="m-field" style="grid-column:span 2"><div class="m-field-label">Difference %</div><div class="m-field-value" style="color:' + dc + '">' + diffStr + '</div></div>' +
           '</div>';
         mobileRows.appendChild(mc);
       });
 
-      // Desktop totals
+      // Totals
       var totActPct = total > 0 ? (totActual / total) * 100 : 0;
       var totDiff = totActPct - totPct;
       var hasAny = rows.some(function(r){ return r.actual !== "" && r.actual !== null; });
+
       tfoot.innerHTML =
         '<tr>' +
         '<td>Total</td>' +
@@ -207,7 +242,6 @@
         '<td style="color:' + diffColor(totDiff, hasAny) + '">' + (hasAny ? (totDiff >= 0 ? '+' : '') + Math.round(totDiff) + '%' : '—') + '</td>' +
         '<td></td></tr>';
 
-      // Mobile totals
       mobileTotals.style.display = "block";
       mobileTotals.innerHTML =
         '<div class="section-label">Totals</div>' +
@@ -218,7 +252,6 @@
         '<div class="m-total-field"><div class="m-field-label">Diff %</div><div class="m-field-value" style="color:' + diffColor(totDiff,hasAny) + '">' + (hasAny ? (totDiff>=0?'+':'') + Math.round(totDiff) + '%' : '—') + '</div></div>' +
         '</div>';
 
-      // Warning
       var w = document.getElementById("pctWarn");
       if (rows.length > 0 && Math.abs(totPct - 100) > 0.01) {
         w.style.display = "block";
@@ -228,7 +261,7 @@
 
     function deleteRow(id) {
       rows = rows.filter(function(r){ return r.id !== id; });
-      render();
+      saveAndRender();
     }
 
     function addRow() {
@@ -238,9 +271,20 @@
       rows.push({ id: nid++, name: name, pct: pct, actual: "" });
       document.getElementById("newName").value = "";
       document.getElementById("newPct").value = "";
-      render();
+      saveAndRender();
     }
 
+    function resetAll() {
+      if (confirm("Reset all data and categories to default?")) {
+        localStorage.clear();
+        rows = JSON.parse(JSON.stringify(DEFAULT_ROWS));
+        nid = 5;
+        document.getElementById("totalAmt").value = "";
+        saveAndRender();
+      }
+    }
+
+    loadData();
     render();
   </script>
 </body>
